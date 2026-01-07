@@ -1,8 +1,8 @@
-# Gunakan Node.js Versi Lengkap (Bukan Slim)
-# Ini sudah ada Python & Build Tools bawaan, jadi anti-gagal.
+# Gunakan Node.js versi FULL (Bukan Slim/Alpine)
+# Versi ini sudah punya Python, GCC, Make, dll bawaan. Anti-gagal install library berat.
 FROM node:18
 
-# 1. Install FFmpeg saja (Sisanya sudah ada)
+# 1. Install FFmpeg (Wajib buat stiker)
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
     apt-get clean && \
@@ -15,14 +15,16 @@ WORKDIR /app
 COPY package.json ./
 
 # 4. Install Dependencies
-# Kita biarkan npm yang mengatur build-nya otomatis
-RUN npm install
+# Kita matikan audit biar lebih cepat
+RUN npm install --no-audit
 
 # 5. Copy Sisa File
 COPY . .
 
-# 6. Buka Port
-EXPOSE 8080
+# 6. SETTING PORT (PENTING BUAT KOYEB)
+# Koyeb mendeteksi port 8000 secara default
+ENV PORT=8000
+EXPOSE 8000
 
 # 7. Jalankan
 CMD ["node", "index.js"]
