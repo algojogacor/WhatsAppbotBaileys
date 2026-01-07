@@ -1,33 +1,31 @@
-FROM node:18-buster
+# Ganti ke Bullseye (Lebih stabil buat Sharp/Couchbase)
+FROM node:18-bullseye-slim
 
-# 1. Install FFmpeg & ALAT BUILD (Penting buat Sharp/Couchbase)
+# 1. Install Library Penting (FFmpeg, Python, Build Tools)
+# Kita gabung jadi satu baris biar hemat layer
 RUN apt-get update && \
     apt-get install -y \
     ffmpeg \
     imagemagick \
     webp \
-    build-essential \
     python3 \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libjpeg-dev \
-    libgif-dev \
-    librsvg2-dev && \
-    apt-get upgrade -y && \
-    rm -rf /var/lib/apt/lists/*
+    make \
+    g++ \
+    build-essential \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
-# 2. Set Folder Kerja
+# 2. Set Folder
 WORKDIR /app
 
-# 3. Copy file konfigurasi dulu (Optimasi Cache)
+# 3. Copy Package dulu
 COPY package.json ./
 
-# 4. Install Library (Dengan flag khusus biar kompatibel)
-# --omit=dev: Gak usah install library developer biar hemat
-# --ignore-scripts: Kadang script install suka error di cloud, kita skip aja yang gak perlu
-RUN npm install --omit=dev
+# 4. Install Dependencies
+# Kita paksa build dari source jika perlu, dan tampilkan log jika error
+RUN npm install --build-from-source=couchbase
 
-# 5. Copy Sisa File Bot
+# 5. Copy file sisanya
 COPY . .
 
 # 6. Buka Port
