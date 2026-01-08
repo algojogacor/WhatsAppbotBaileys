@@ -91,11 +91,15 @@ module.exports = async (command, args, msg, user, db) => {
             return msg.reply(`👮 Polisi lagi patroli! Tunggu ${sisa} menit lagi.`);
         }
 
-        if (!msg.mentionedIds || msg.mentionedIds.length === 0) {
+        // --- PERBAIKAN DI SINI (DETEKSI MENTION BAILEYS) ---
+        // Kita ambil dari 'contextInfo' agar 100% akurat di Baileys
+        const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || msg.mentionedIds || [];
+        const targetId = mentions[0]; // Ambil orang pertama yang ditag
+
+        if (!targetId) {
             return msg.reply("❌ Tag korban! Contoh: `!rob @user`");
         }
 
-        const targetId = msg.mentionedIds[0];
         if (targetId === msg.author) return msg.reply("❌ Gak bisa maling diri sendiri!");
 
         // Auto-Register Target (Biar gak error reading 'balance')
@@ -131,6 +135,7 @@ module.exports = async (command, args, msg, user, db) => {
             user.lastRob = now;
             saveDB(db);
 
+            // Kita pakai split('@')[0] biar aman kalau nggak bisa mention
             return msg.reply(`🥷 *BERHASIL MALING!*\nKamu mencuri 💰${stolen.toLocaleString()} dari @${targetId.split('@')[0]}!`, null, { mentions: [targetId] });
         } else {
             // Gagal (Denda 500)
