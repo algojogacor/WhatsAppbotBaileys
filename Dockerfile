@@ -1,30 +1,28 @@
-# Gunakan Node.js versi FULL (Bukan Slim/Alpine)
-# Versi ini sudah punya Python, GCC, Make, dll bawaan. Anti-gagal install library berat.
-FROM node:18
+FROM node:20-bookworm
 
-# 1. Install FFmpeg (Wajib buat stiker)
+# 1. Install FFmpeg & Library Pendukung (Wajib buat stiker/PDF)
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
-    apt-get clean && \
+    apt-get install -y \
+    ffmpeg \
+    imagemagick \
+    webp && \
+    apt-get upgrade -y && \
     rm -rf /var/lib/apt/lists/*
 
 # 2. Set Folder Kerja
 WORKDIR /app
 
-# 3. Copy Package
-COPY package.json ./
+# 3. Copy Package JSON dulu biar cache jalan
+COPY package*.json ./
 
-# 4. Install Dependencies
-# Kita matikan audit biar lebih cepat
-RUN npm install --no-audit
+# 4. Install Library Node.js
+RUN npm install
 
-# 5. Copy Sisa File
+# 5. Copy Semua File Bot
 COPY . .
 
-# 6. SETTING PORT (PENTING BUAT KOYEB)
-# Koyeb mendeteksi port 8000 secara default
-ENV PORT=8000
-EXPOSE 8000
+# 6. Buka Port untuk Koyeb
+EXPOSE 8080
 
-# 7. Jalankan
+# 7. Jalankan Bot
 CMD ["node", "index.js"]
