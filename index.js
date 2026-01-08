@@ -4,15 +4,15 @@ const pino = require('pino');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
 
-// Cloud Couchbase
+// Database Lokal (Pastikan helpers/database.js sudah diperbaiki ke versi JSON)
 const { connectToCloud, loadDB, saveDB, addQuestProgress } = require('./helpers/database');
 
 // --- IMPORT COMMANDS ---
-const economyCmd = require('./commands/economy');   
+const economyCmd = require('./commands/economy'); 
 const toolsCmd = require('./commands/tools');       
 const bolaCmd = require('./commands/bola');         
 const profileCmd = require('./commands/profile');   
-const battleCmd = require('./commands/battle');     
+// const battleCmd = require('./commands/battle'); // ❌ DIHAPUS BIAR GAK CRASH   
 const ttsCmd = require('./commands/tts');           
 const gameTebakCmd = require('./commands/gameTebak'); 
 const cryptoCmd = require('./commands/crypto');     
@@ -30,7 +30,7 @@ const ALLOWED_GROUPS = [
     "120363328759898377@g.us"        // Grup Testingbot
 ];
 
-// --- TAMBAHAN UNTUK KOYEB (Supaya bot tidak mati) ---
+// --- TAMBAHAN UNTUK KOYEB/PANEL (Supaya bot tidak mati) ---
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 8080;
@@ -46,14 +46,16 @@ app.listen(port, () => {
 // --- 3. FUNGSI UTAMA KONEKSI BAILEYS ---
 async function startBot() {
     
-    // PERBAIKAN 1: Try-Catch Database (Agar Bot TIDAK MATI jika internet/DB lemot)
+    // PERBAIKAN 1: Inisialisasi Database Lokal
     try {
         console.log("🔄 Menghubungkan ke Database...");
-        await connectToCloud();
+        await connectToCloud(); // Ini sebenarnya load database lokal
+        // Simpan DB ke variable global agar mudah diakses
+        global.db = loadDB(); 
         console.log("✅ Database Terhubung!");
     } catch (err) {
-        console.log("⚠️ GAGAL KONEK DB: Bot jalan dalam Mode Darurat (Tanpa Save Cloud).");
-        // Bot tetap lanjut ke bawah walau DB error
+        console.log("⚠️ GAGAL KONEK DB: Bot jalan dalam Mode Darurat.");
+        global.db = { users: {}, groups: {}, market: {}, settings: {} }; // Fallback data kosong
     }
 
     // Setup Auth (Session disimpan di folder 'auth_baileys')
@@ -115,7 +117,7 @@ async function startBot() {
                          m.message.extendedTextMessage?.text || 
                          m.message.imageMessage?.caption || "";
             
-            // 🔥 PERBAIKAN 2: CCTV LOG (Cek apakah pesan masuk terbaca di terminal)
+            // CCTV LOG (Cek pesan masuk di terminal)
             if (body) console.log(`📨 PESAN DARI ${pushName}: ${body.slice(0, 30)}...`);
 
             // Cek Media
@@ -163,7 +165,6 @@ async function startBot() {
             // ==========================================================
             
             // PENGAMAN 2: KHUSUS GRUP
-
             // (Matikan baris ini jika ingin tes bot di JAPRI)
             if (!chat.isGroup) return;
 
@@ -182,7 +183,8 @@ async function startBot() {
             //  DATABASE & LOGIKA UTAMA
             // ==========================================================
 
-            const db = loadDB();
+            // Gunakan Global DB agar sinkron
+            const db = global.db; 
 
             // --- PENGAMAN DATABASE ---
             if (!db.users) db.users = {};
@@ -208,7 +210,6 @@ async function startBot() {
                     crypto: {}, debt: 0, bank: 0, 
                     quest: JSON.parse(JSON.stringify(defaultQuest))
                 };
-                saveDB(db);
             }
 
             const user = db.users[sender];
@@ -235,7 +236,6 @@ async function startBot() {
             if (user.quest?.lastReset !== today) {
                 user.quest.daily.forEach(q => { q.progress = 0; q.claimed = false; });
                 user.quest.lastReset = today;
-                saveDB(db);
             }
 
             if (user.buffs) {
@@ -262,8 +262,7 @@ async function startBot() {
 
             const qMsg = addQuestProgress(user, "chat");
             if (qMsg) msg.reply(qMsg);
-            saveDB(db);
-
+            
             // --- E. PREPARASI COMMAND ---
             const isCommand = body.startsWith('!');
             const args = isCommand ? body.slice(1).trim().split(/ +/) : [];
@@ -272,6 +271,17 @@ async function startBot() {
             // ==========================================================
             //  MODUL INTERAKTIF (Jalan Tanpa Prefix !)
             // ==========================================================
+
+            // 👇👇 [FIXED] FITUR CEK ID (LENGKAP) 👇👇
+            if (command === 'id' || command === 'cekid') {
+                let info = `🆔 *INFORMASI ID*\n\n`;
+                info += `📍 *Chat/Remote JID:* \n\`${remoteJid}\`\n\n`;
+                info += `👤 *Sender JID:* \n\`${sender}\`\n\n`;
+                if (m.key.participant) {
+                    info += `🔑 *Participant Key:* \n\`${m.key.participant}\`\n`;
+                }
+                return msg.reply(info);
+            }
 
             // MODUL PDF
             if (typeof pdfCmd !== 'undefined') {
@@ -290,10 +300,7 @@ async function startBot() {
                 await robCmd(command, args, msg, user, db).catch(e => console.error("Error Rob:", e.message));
             }
 
-            const battleCommands = ['pvp', 'battle', 'terima', 'stopbattle', 'surrender', 'nyerah'];
-            if (battleCommands.includes(command)) {
-                await battleCmd(command, args, msg, user, db).catch(e => console.error("Error Battle:", e.message));
-            }
+            // ❌ LOGIKA BATTLE DIHAPUS DARI SINI BIAR GAK CRASH
 
             // ==========================================================
             //  MODUL COMMAND (Wajib Prefix !)
@@ -331,9 +338,6 @@ async function startBot() {
 • !gacha (Jackpot 10k!)
 • !casino <jml> | !slot <jml>
 • !tebakgambar | !asahotak | !susunkata
-• !pvp @user | !battle @user (Tantang Duel)
-• !terima (Terima Tantangan)
-• !stopbattle | !surrender (Stop Battle)
 
 ⚽ *SPORT BETTING*
 • !updatebola | !bola | !topbola | !resultbola
@@ -354,6 +358,7 @@ async function startBot() {
 • !tts (text to speech)
 
 🛠️ *TOOLS & ADMIN*
+• !id (Cek ID Lengkap)
 • !idgrup (Cek ID Grup)`;
                 
                 return msg.reply(menuText);
@@ -363,6 +368,15 @@ async function startBot() {
             console.error("Critical Error di Index.js:", e.message);
         }
     });
+
+    // --- 5. AUTO SAVE DATABASE (Setiap 5 Detik) ---
+    // Sesuai kode terakhir Anda, interval 5 detik.
+    setInterval(() => {
+        if (global.db) {
+            saveDB(global.db);
+            // console.log('💾 Auto-Save Database OK.');
+        }
+    }, 5 * 1000); 
 }
 
 // Jalankan Bot
