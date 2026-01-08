@@ -3,41 +3,52 @@ const fs = require('fs');
 const path = require('path');
 
 module.exports = async (command, args, msg) => {
+    
     if (command !== 'tts') return;
 
-    const text = args.join(' ');
-    if (!text) return msg.reply("❌ Masukkan teksnya bro! Contoh: *!tts halo semuanya*");
-
-    // Tentukan bahasa (default: Indonesia 'id')
-    const lang = 'id';
-    const tts = new gTTS(text, lang);
-    const fileName = `tts_${Date.now()}.mp3`;
-    const filePath = path.join(__dirname, `../temp/${fileName}`);
-
-    // Pastikan folder temp ada
-    if (!fs.existsSync(path.join(__dirname, '../temp'))) {
-        fs.mkdirSync(path.join(__dirname, '../temp'));
+    // 1. Cek Input
+    if (args.length === 0) {
+        return msg.reply("❌ Masukkan teksnya! Contoh: \n!tts Halo apa kabar");
     }
 
+    const text = args.join(" ");
+    const lang = 'id'; // Bahasa Indonesia
+
     try {
-        tts.save(filePath, async (err) => {
-            if (err) {
-                console.error(err);
-                return msg.reply("❌ Gagal mengubah teks ke suara.");
+        // 2. Siapkan Chat Wrapper (dari index.js)
+        const chat = await msg.getChat(); 
+
+        // 3. Tentukan Lokasi File Sementara
+        const tempDir = path.join(__dirname, '../temp');
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir); // Buat folder temp jika belum ada
+
+        const filePath = path.join(tempDir, `tts_${Date.now()}.mp3`);
+
+        // 4. Proses Google TTS
+        const tts = new gTTS(text, lang);
+        
+        tts.save(filePath, async function (err, result) {
+            if (err) { 
+                console.error("Gagal save TTS:", err);
+                return msg.reply("❌ Gagal membuat audio TTS."); 
             }
 
-            const media = MessageMedia.fromFilePath(filePath);
-            
-            // Mengirim sebagai Voice Note (sendAudioAsVoice: true)
-            await msg.reply(media, null, { sendAudioAsVoice: true });
+            // 5. BACA FILE JADI BUFFER (Ini cara Baileys!)
+            const audioBuffer = fs.readFileSync(filePath);
 
-            // Hapus file setelah terkirim agar penyimpanan tidak penuh
-            setTimeout(() => {
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            }, 5000);
+            // 6. Kirim sebagai Voice Note (PTT)
+            await chat.sendMessage({ 
+                audio: audioBuffer, 
+                mimetype: 'audio/mp4', 
+                ptt: true // true = jadi voice note, false = jadi file musik
+            });
+
+            // 7. Hapus File Sampah
+            fs.unlinkSync(filePath);
         });
+
     } catch (e) {
-        console.error(e);
-        msg.reply("❌ Terjadi kesalahan pada sistem TTS.");
+        console.error("Error TTS:", e);
+        msg.reply("❌ Terjadi kesalahan pada fitur TTS.");
     }
 };
