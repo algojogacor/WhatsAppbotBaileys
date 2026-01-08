@@ -1,68 +1,76 @@
 require('dotenv').config();
 const couchbase = require('couchbase');
 
-let collection = null;
-let localData = {}; 
+// Konfigurasi Cluster (Sesuaikan dengan kredensial kamu)
+const clusterConnStr = 'couchbases://cb.1t0wwbqqav1skwl3.cloud.couchbase.com'; 
+const username = 'adminbot'; 
+const password = '@arya260408'; 
+const bucketName = 'algojogacor';   
 
+let cluster;
+let bucket;
+let collection;
+let localData = {}; // Penampung data di RAM
+
+// Fungsi Koneksi
 async function connectToCloud() {
-    console.log("🔄 Menghubungkan ke Couchbase Capella...");
-    
-    // Ambil data rahasia dari file .env
-    const clusterConnStr = process.env.DB_URL;
-    const username = process.env.DB_USER;
-    const password = process.env.DB_PASS;
-    const bucketName = process.env.BUCKET_NAME;
-
-    if (!clusterConnStr) {
-        console.error("❌ ERROR: File .env belum diisi!");
-        return;
-    }
-
     try {
-        // 1. Konek ke Cluster
-        const cluster = await couchbase.connect(clusterConnStr, {
+        console.log("☁️ Menghubungkan ke Couchbase...");
+        cluster = await couchbase.connect(clusterConnStr, {
             username: username,
             password: password,
-            configProfile: 'wanDevelopment', // Mode internet publik
+            configProfile: 'wanDevelopment',
         });
-
-        // 2. Buka Bucket
-        const bucket = cluster.bucket(bucketName);
+        bucket = cluster.bucket(bucketName);
         collection = bucket.defaultCollection();
+        console.log("✅ Terhubung ke Couchbase Cloud!");
 
-        // 3. Coba ambil data lama
-        try {
-            const result = await collection.get('data_bot_utama');
-            localData = result.content;
-            console.log("✅ SUKSES: Data lama berhasil dimuat dari Cloud!");
-        } catch (e) {
-            console.log("ℹ️ Database Cloud masih kosong. Membuat data baru...");
-            localData = {}; 
-        }
-
+        // Langsung Load Data saat konek
+        await loadFromCloud();
     } catch (err) {
-        console.error("❌ GAGAL KONEK: Pastikan Username/Pass di .env benar!", err.message);
+        console.error("❌ Gagal Konek Couchbase:", err);
     }
 }
 
+// Fungsi Load Data dari Cloud ke RAM
+async function loadFromCloud() {
+    try {
+        const result = await collection.get('bot_data'); // 'bot_data' adalah ID dokumen kita
+        localData = result.content;
+        console.log("📥 Data berhasil ditarik dari Cloud.");
+    } catch (err) {
+        if (err.message.includes('document not found')) {
+            console.log("ℹ️ Data baru di Cloud. Menggunakan default.");
+            localData = { users: {}, groups: {}, market: {} };
+        } else {
+            console.error("⚠️ Gagal Load Data:", err.message);
+        }
+    }
+    return localData;
+}
+
+// Fungsi Load (Dipanggil index.js)
 const loadDB = () => localData;
 
+// Fungsi Save (Push RAM ke Cloud)
 const saveDB = async (data) => {
-    localData = data;
-    // Upload background process
-    if (collection) {
-        collection.upsert('data_bot_utama', localData).catch(err => console.error("⚠️ Gagal Save Cloud:", err.message));
+    if (data) localData = data;
+    try {
+        await collection.upsert('bot_data', localData);
+        // console.log("☁️ Data tersimpan ke Cloud.");
+    } catch (err) {
+        console.error("⚠️ Gagal Save ke Cloud:", err.message);
     }
 };
 
-// Fungsi bantuan Quest (biar tidak error di index.js)
+// Helper Quest (Sama kayak kemarin)
 const addQuestProgress = (user, questId) => {
     if (!user.quest || !user.quest.daily) return null;
     const quest = user.quest.daily.find(q => q.id === questId);
     if (quest && !quest.claimed && quest.progress < quest.target) {
         quest.progress++;
         if (quest.progress >= quest.target) {
-            return `🎉 Quest *${quest.name}* Selesai! Ketik !daily klaim untuk hadiah.`;
+            return `🎉 Quest *${quest.name}* Selesai! Ketik !daily klaim.`;
         }
     }
     return null;
