@@ -2,10 +2,10 @@ const { saveDB } = require('../helpers/database');
 
 // HELPER FORMAT ANGKA (Titik Ribuan, Tanpa Desimal)
 const fmt = (num) => {
-    return Math.floor(Number(num)).toLocaleString('id-ID');
+    return Math.floor(Number(num) || 0).toLocaleString('id-ID');
 };
 
-// BERITA PASAR CRYPTO
+// BERITA PASAR CRYPTO (TIDAK DIUBAH/DIKURANGI)
 const newsPool = [
     { txt: "🚀 BLACKROCK ajukan ETF Bitcoin Spot, institusi masuk pasar!", effect: { btc: 1.5, all: 1.2 }, sMod: { btc: -15 } },
     { txt: "🔥 EL SALVADOR umumkan 'Bitcoin City' bebas pajak!", effect: { btc: 1.3 }, sMod: { btc: -10 } },
@@ -42,10 +42,10 @@ const newsPool = [
 ];
 
 module.exports = async (command, args, msg, user, db) => {
-    // 1. Inisialisasi User
-    if (typeof user.balance === 'undefined') user.balance = 0;
+    // 1. Inisialisasi User (Auto-Heal)
+    if (typeof user.balance === 'undefined' || isNaN(user.balance)) user.balance = 0;
     if (typeof user.crypto === 'undefined') user.crypto = {};
-    if (typeof user.debt === 'undefined') user.debt = 0;
+    if (typeof user.debt === 'undefined' || isNaN(user.debt)) user.debt = 0;
 
     // 2. Inisialisasi Market (Database Permanen)
     if (!db.market || !db.market.prices) {
@@ -76,7 +76,6 @@ module.exports = async (command, args, msg, user, db) => {
             let factor = marketData.pendingEffect.all || marketData.pendingEffect[k] || 1;
             
             // B. Tentukan Tingkat Keliaran (Range Persen Integer)
-            // Angka di bawah adalah persentase (misal 15 = +/- 15%)
             let volatilityRange = 20; // Default 20%
 
             if (k === 'btc' || k === 'eth') volatilityRange = 10; // +/- 10%
@@ -84,11 +83,9 @@ module.exports = async (command, args, msg, user, db) => {
             else if (k === 'doge' || k === 'pepe') volatilityRange = 30; // +/- 30% (Sangat Liar)
 
             // C. Hitung Persentase Acak (Bilangan Bulat)
-            // Menghasilkan angka antara -range s/d +range (Contoh: -30 s/d +30)
             let percentChange = Math.floor(Math.random() * (volatilityRange * 2 + 1)) - volatilityRange;
             
             // D. Terapkan Harga (KELIPATAN/COMPOUNDING)
-            // Harga Baru = Harga Lama * Efek Berita * (1 + Persen/100)
             let multiplier = 1 + (percentChange / 100);
             let rawPrice = marketData.prices[k] * factor * multiplier;
             
@@ -154,16 +151,28 @@ module.exports = async (command, args, msg, user, db) => {
         return msg.reply(txt);
     }
 
-    // 5. COMMAND !BUYCRYPTO
+    // 5. COMMAND !BUYCRYPTO (!buycrypto btc 0.5 atau !buycrypto btc all)
     if (command === 'buycrypto') {
         const koin = args[0]?.toLowerCase();
-        // Terima input desimal pakai titik atau koma (misal 0.5 atau 0,5)
-        const jml = parseFloat(args[1]?.replace(',', '.')); 
         
-        if (!marketData.prices[koin] || isNaN(jml) || jml <= 0) return msg.reply("❌ Contoh: !buycrypto btc 0.5");
+        if (!marketData.prices[koin]) return msg.reply("❌ Koin tidak valid. Cek !market");
+
+        let jml = 0;
+        let total = 0;
+
+        // FITUR BELI ALL
+        if (args[1]?.toLowerCase() === 'all') {
+            const maxBeli = user.balance / marketData.prices[koin];
+            jml = parseFloat(maxBeli.toFixed(4)); // Max 4 desimal
+            if (jml > marketData.stocks[koin]) jml = marketData.stocks[koin]; // Cek stok
+        } else {
+            jml = parseFloat(args[1]?.replace(',', '.')); 
+        }
+        
+        if (isNaN(jml) || jml <= 0) return msg.reply("❌ Contoh: !buycrypto btc 0.5 atau !buycrypto btc all");
         
         const pricePerCoin = marketData.prices[koin];
-        const total = Math.floor(pricePerCoin * jml); // Total bayar dibulatkan
+        total = Math.floor(pricePerCoin * jml); // Total bayar dibulatkan
         
         if (user.balance < total) return msg.reply(`❌ Saldo kurang! Butuh: 💰${fmt(total)}`);
         if (marketData.stocks[koin] < jml) return msg.reply(`❌ Stok pasar habis!`);
@@ -175,17 +184,33 @@ module.exports = async (command, args, msg, user, db) => {
         return msg.reply(`✅ *BELI SUKSES*\nBeli: ${jml} ${koin.toUpperCase()}\nTotal: 💰${fmt(total)}`);
     }
 
-    // 6. COMMAND !SELLCRYPTO
+    // 6. COMMAND !SELLCRYPTO (!sellcrypto btc 0.5 atau !sellcrypto btc all)
     if (command === 'sellcrypto') {
         const koin = args[0]?.toLowerCase();
-        const jml = parseFloat(args[1]?.replace(',', '.'));
-        if (!user.crypto?.[koin] || user.crypto[koin] < jml) return msg.reply(`❌ Aset ${koin?.toUpperCase()} tidak cukup!`);
+        
+        if (!user.crypto?.[koin]) return msg.reply(`❌ Kamu tidak punya aset ${koin?.toUpperCase()}!`);
+
+        let jml = 0;
+
+        // FITUR JUAL ALL
+        if (args[1]?.toLowerCase() === 'all') {
+            jml = user.crypto[koin];
+        } else {
+            jml = parseFloat(args[1]?.replace(',', '.'));
+        }
+
+        if (isNaN(jml) || jml <= 0) return msg.reply("❌ Contoh: !sellcrypto btc 0.5 atau !sellcrypto btc all");
+        if (user.crypto[koin] < jml) return msg.reply(`❌ Aset tidak cukup! Punya: ${user.crypto[koin]}`);
 
         const bruto = marketData.prices[koin] * jml;
         const pajak = bruto * TAX_SELL;
         const neto = Math.floor(bruto - pajak); // Hasil jual dibulatkan
 
         user.crypto[koin] -= jml;
+        
+        // Hapus key jika aset 0 biar rapi
+        if (user.crypto[koin] <= 0.000001) delete user.crypto[koin];
+
         user.balance += neto; 
         marketData.stocks[koin] += jml;
         saveDB(db);
@@ -255,8 +280,7 @@ module.exports = async (command, args, msg, user, db) => {
         let res = `🏆 *TOP 5 SULTAN* 🏆\n\n` + top.map((u, i) => `${i+1}. @${u.id.split('@')[0]} - 💰${fmt(u.total)}`).join('\n');
         
         // Mention di Baileys
-        const { getChat } = msg;
-        const chat = await getChat();
+        const chat = await msg.getChat();
         await chat.sendMessage(res, { mentions: top.map(u => u.originalId) });
     }
 
@@ -289,17 +313,14 @@ module.exports = async (command, args, msg, user, db) => {
 
     // 11. COMMAND MIGRASI
     if (command === 'migrasi' || command === 'gabungakun') {
-        // Ambil JID target dari context info (mention)
         const targetJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-        const senderId = msg.key.remoteJid || msg.author; // ID Pengirim
+        const senderId = msg.key.remoteJid || msg.author; 
 
         if (!targetJid || targetJid === senderId) return msg.reply("❌ Tag akun utama! Contoh: `!migrasi @628xxx`");
 
-        // Cek data user target di database
         if (!db.users[targetJid]) db.users[targetJid] = { balance: 0, debt: 0, xp: 0, level: 1, crypto: {} };
         const targetUser = db.users[targetJid];
 
-        // Pindahkan Aset
         targetUser.balance = (targetUser.balance || 0) + (user.balance || 0);
         targetUser.debt = (targetUser.debt || 0) + (user.debt || 0);
         targetUser.xp = (targetUser.xp || 0) + (user.xp || 0);
@@ -309,13 +330,10 @@ module.exports = async (command, args, msg, user, db) => {
             targetUser.crypto[k] = (targetUser.crypto[k] || 0) + v;
         }
 
-        // Hapus User Lama
         delete db.users[senderId];
         saveDB(db);
 
-        // Kirim konfirmasi dengan mention
-        const { getChat } = msg;
-        const chat = await getChat();
+        const chat = await msg.getChat();
         await chat.sendMessage(`✅ Migrasi ke @${targetJid.split('@')[0]} berhasil.`, { mentions: [targetJid] });
     }
 };
