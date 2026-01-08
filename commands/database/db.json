@@ -1,0 +1,204 @@
+{
+  "users": {
+    "244203384742140@lid": {
+      "balance": 2102,
+      "xp": 86,
+      "level": 1,
+      "inv": [],
+      "buffs": {},
+      "lastDaily": 0,
+      "bolaWin": 0,
+      "bolaTotal": 0,
+      "bolaProfit": 0,
+      "crypto": {
+        "doge": 18.264150943396224,
+        "btc": 1,
+        "eth": 1
+      },
+      "debt": 0,
+      "bank": 0,
+      "quest": {
+        "daily": [
+          {
+            "id": "chat",
+            "name": "Ngobrol Aktif",
+            "progress": 10,
+            "target": 10,
+            "reward": 200,
+            "claimed": false
+          },
+          {
+            "id": "game",
+            "name": "Main Casino",
+            "progress": 0,
+            "target": 3,
+            "reward": 300,
+            "claimed": false
+          },
+          {
+            "id": "sticker",
+            "name": "Bikin Stiker",
+            "progress": 0,
+            "target": 2,
+            "reward": 150,
+            "claimed": false
+          }
+        ],
+        "weekly": {
+          "id": "weekly",
+          "name": "Weekly Warrior",
+          "progress": 43,
+          "target": 100,
+          "reward": 2000,
+          "claimed": false
+        },
+        "lastReset": "2026-01-08"
+      },
+      "lastSeen": 1767866900074,
+      "lastMining": 1767866582495
+    },
+    "57973552472297@lid": {
+      "balance": 1000,
+      "xp": 2,
+      "level": 1,
+      "inv": [],
+      "buffs": {},
+      "lastDaily": 0,
+      "bolaWin": 0,
+      "bolaTotal": 0,
+      "bolaProfit": 0,
+      "crypto": {},
+      "debt": 0,
+      "bank": 0,
+      "quest": {
+        "daily": [
+          {
+            "id": "chat",
+            "name": "Ngobrol Aktif",
+            "progress": 1,
+            "target": 10,
+            "reward": 200,
+            "claimed": false
+          },
+          {
+            "id": "game",
+            "name": "Main Casino",
+            "progress": 0,
+            "target": 3,
+            "reward": 300,
+            "claimed": false
+          },
+          {
+            "id": "sticker",
+            "name": "Bikin Stiker",
+            "progress": 0,
+            "target": 2,
+            "reward": 150,
+            "claimed": false
+          }
+        ],
+        "weekly": {
+          "id": "weekly",
+          "name": "Weekly Warrior",
+          "progress": 1,
+          "target": 100,
+          "reward": 2000,
+          "claimed": false
+        },
+        "lastReset": "2026-01-08"
+      },
+      "lastSeen": 1767865175816
+    },
+    "251049612955654@lid": {
+      "balance": 7051,
+      "xp": 30,
+      "level": 1,
+      "inv": [],
+      "buffs": {},
+      "lastDaily": 0,
+      "bolaWin": 0,
+      "bolaTotal": 0,
+      "bolaProfit": 0,
+      "crypto": {
+        "doge": 246.1320754716981,
+        "btc": 5,
+        "sol": 1,
+        "pepe": 1441
+      },
+      "debt": 0,
+      "bank": 0,
+      "quest": {
+        "daily": [
+          {
+            "id": "chat",
+            "name": "Ngobrol Aktif",
+            "progress": 10,
+            "target": 10,
+            "reward": 200,
+            "claimed": false
+          },
+          {
+            "id": "game",
+            "name": "Main Casino",
+            "progress": 0,
+            "target": 3,
+            "reward": 300,
+            "claimed": false
+          },
+          {
+            "id": "sticker",
+            "name": "Bikin Stiker",
+            "progress": 0,
+            "target": 2,
+            "reward": 150,
+            "claimed": false
+          }
+        ],
+        "weekly": {
+          "id": "weekly",
+          "name": "Weekly Warrior",
+          "progress": 15,
+          "target": 100,
+          "reward": 2000,
+          "claimed": false
+        },
+        "lastReset": "2026-01-08"
+      },
+      "lastSeen": 1767866868811,
+      "lastMining": 1767866577569
+    }
+  },
+  "market": {
+    "lastUpdate": 1767865985737,
+    "prices": {
+      "btc": 5040,
+      "eth": 2350,
+      "sol": 768,
+      "doge": 53,
+      "pepe": 3
+    },
+    "stocks": {
+      "btc": 42.99988,
+      "eth": 99.99,
+      "sol": 184,
+      "doge": 4973,
+      "pepe": 20020
+    },
+    "lastStockChange": {
+      "btc": -7,
+      "eth": 0,
+      "sol": -16,
+      "doge": -17,
+      "pepe": 20
+    },
+    "currentNews": "Rumor: Investor institusi mulai mengakumulasi aset.",
+    "nextNews": "💎 ETHEREUM selesaikan upgrade Sharding, gas fee jadi murah!",
+    "pendingEffect": {
+      "eth": 1.6
+    },
+    "pendingStockMod": {
+      "eth": -40
+    }
+  },
+  "matches": {}
+}
