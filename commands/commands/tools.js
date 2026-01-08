@@ -6,9 +6,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 
-// Set path ffmpeg
-const ffmpegPath = path.join(__dirname, '../ffmpeg.exe');
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 const agent = new https.Agent({ rejectUnauthorized: false });
 
@@ -97,7 +94,7 @@ module.exports = async (command, args, msg, user, db, chat) => {
     }
 
     // --- FITUR 3: TOIMG (Ubah Stiker jadi Gambar) ---
-    // ✅ SEKARANG SUDAH DIAKTIFKAN (Menggunakan FFmpeg)
+    
     if (command === "toimg") {
         try {
             const isQuotedSticker = msg.message.extendedTextMessage?.contextInfo?.quotedMessage?.stickerMessage;
