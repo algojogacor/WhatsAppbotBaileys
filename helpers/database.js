@@ -76,4 +76,5 @@ const addQuestProgress = (user, questId) => {
     return null;
 };
 
+
 module.exports = { connectToCloud, loadDB, saveDB, addQuestProgress };
