@@ -4,7 +4,7 @@ const couchbase = require('couchbase');
 // Konfigurasi Cluster (Sesuaikan dengan kredensial kamu)
 const clusterConnStr = 'couchbases://cb.1t0wwbqqav1skwl3.cloud.couchbase.com'; 
 const username = 'adminbot'; 
-const password = '@arya260408'; 
+const password = '@Arya260408'; 
 const bucketName = 'algojogacor';   
 
 let cluster;
@@ -78,3 +78,4 @@ const addQuestProgress = (user, questId) => {
 
 
 module.exports = { connectToCloud, loadDB, saveDB, addQuestProgress };
+
