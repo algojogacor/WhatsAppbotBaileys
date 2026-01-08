@@ -4,9 +4,6 @@ const fs = require('fs-extra');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 
-// Set path ffmpeg
-const ffmpegPath = path.join(__dirname, '../ffmpeg.exe');
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 // Format Sesi: { "id_user": { buffers: [], mode: 'color' | 'bw' } }
 const pdfSessions = {};
