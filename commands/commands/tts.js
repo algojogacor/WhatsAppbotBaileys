@@ -15,12 +15,14 @@ module.exports = async (command, args, msg) => {
     const lang = 'id'; // Bahasa Indonesia
 
     try {
-        // 2. Siapkan Chat Wrapper (dari index.js)
+        // 2. Siapkan Chat Wrapper (untuk send message)
         const chat = await msg.getChat(); 
 
         // 3. Tentukan Lokasi File Sementara
         const tempDir = path.join(__dirname, '../temp');
-        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir); // Buat folder temp jika belum ada
+        
+        // Pastikan folder temp ada
+        if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
 
         const filePath = path.join(tempDir, `tts_${Date.now()}.mp3`);
 
@@ -33,17 +35,18 @@ module.exports = async (command, args, msg) => {
                 return msg.reply("❌ Gagal membuat audio TTS."); 
             }
 
-            // 5. BACA FILE JADI BUFFER (Ini cara Baileys!)
+            // 5. BACA FILE JADI BUFFER (Ini Cara Baileys!)
+            // Baileys tidak butuh 'MessageMedia', dia butuh 'Buffer'.
             const audioBuffer = fs.readFileSync(filePath);
 
-            // 6. Kirim sebagai Voice Note (PTT)
+            // 6. Kirim Audio
             await chat.sendMessage({ 
                 audio: audioBuffer, 
                 mimetype: 'audio/mp4', 
-                ptt: true // true = jadi voice note, false = jadi file musik
+                ptt: true // true = Kirim sebagai Voice Note
             });
 
-            // 7. Hapus File Sampah
+            // 7. Hapus File Sampah biar server gak penuh
             fs.unlinkSync(filePath);
         });
 
