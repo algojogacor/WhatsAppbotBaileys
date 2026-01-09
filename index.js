@@ -12,7 +12,7 @@ const economyCmd = require('./commands/economy');
 const toolsCmd = require('./commands/tools');       
 const bolaCmd = require('./commands/bola');         
 const profileCmd = require('./commands/profile');   
-// const battleCmd = require('./commands/battle'); // ❌ DIHAPUS BIAR GAK CRASH   
+const battleCmd = require('./commands/battle');     
 const ttsCmd = require('./commands/tts');           
 const gameTebakCmd = require('./commands/gameTebak'); 
 const cryptoCmd = require('./commands/crypto');     
@@ -27,11 +27,11 @@ const ALLOWED_GROUPS = [
     "120363310599817766@g.us",       // Grup Sodara
     "6282140693010-1590052322@g.us", // Grup Keluarga Wonoboyo
     "120363253471284606@g.us",       // Grup Ambarya
-    "120363328759898377@g.us"        // Grup Testingbot
+    "120363328759898377@g.us",       // Grup Testingbot
     "120363422854499629@g.us"        // Grup English Area
 ];
 
-// --- TAMBAHAN UNTUK KOYEB/PANEL
+// --- TAMBAHAN UNTUK KOYEB/PANEL (Supaya bot tidak mati) ---
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 8080;
@@ -100,6 +100,8 @@ async function startBot() {
         const m = messages[0];
         if (!m.message) return;
         
+        // ⛔ PENGAMAN 1: Abaikan pesan dari Bot sendiri
+        // if (m.key.fromMe) return; 
 
         try {
             // ==========================================================
@@ -272,6 +274,7 @@ async function startBot() {
             // ==========================================================
 
             // 👇👇 [FIXED] FITUR CEK ID (LENGKAP) 👇👇
+            // Ditaruh disini setelah variabel 'command' didefinisikan
             if (command === 'id' || command === 'cekid') {
                 let info = `🆔 *INFORMASI ID*\n\n`;
                 info += `📍 *Chat/Remote JID:* \n\`${remoteJid}\`\n\n`;
@@ -299,7 +302,10 @@ async function startBot() {
                 await robCmd(command, args, msg, user, db).catch(e => console.error("Error Rob:", e.message));
             }
 
-            // ❌ LOGIKA BATTLE DIHAPUS DARI SINI BIAR GAK CRASH
+            const battleCommands = ['pvp', 'battle', 'terima', 'stopbattle', 'surrender', 'nyerah'];
+            if (battleCommands.includes(command)) {
+                await battleCmd(command, args, msg, user, db).catch(e => console.error("Error Battle:", e.message));
+            }
 
             // ==========================================================
             //  MODUL COMMAND (Wajib Prefix !)
@@ -337,6 +343,9 @@ async function startBot() {
 • !gacha (Jackpot 10k!)
 • !casino <jml> | !slot <jml>
 • !tebakgambar | !asahotak | !susunkata
+• !pvp @user | !battle @user (Tantang Duel)
+• !terima (Terima Tantangan)
+• !stopbattle | !surrender (Stop Battle)
 
 ⚽ *SPORT BETTING*
 • !updatebola | !bola | !topbola | !resultbola
@@ -379,5 +388,5 @@ async function startBot() {
 }
 
 // Jalankan Bot
-startBot();
 
+startBot();
