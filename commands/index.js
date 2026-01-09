@@ -27,7 +27,8 @@ const ALLOWED_GROUPS = [
     "120363310599817766@g.us",       // Grup Sodara
     "6282140693010-1590052322@g.us", // Grup Keluarga Wonoboyo
     "120363253471284606@g.us",       // Grup Ambarya
-    "120363328759898377@g.us"        // Grup Testingbot
+    "120363328759898377@g.us",       // Grup Testingbot
+    "120363422854499629@g.us"        // Grup English Area
 ];
 
 // --- TAMBAHAN UNTUK KOYEB/PANEL (Supaya bot tidak mati) ---
@@ -387,4 +388,5 @@ async function startBot() {
 }
 
 // Jalankan Bot
+
 startBot();
