@@ -47,7 +47,7 @@ module.exports = async (command, args, msg, user, db) => {
     if (typeof user.crypto === 'undefined') user.crypto = {};
     if (typeof user.debt === 'undefined' || isNaN(user.debt)) user.debt = 0;
 
-    // 2. Inisialisasi Market (Database Permanen)
+    // 2. Inisialisasi Market (Database Permanen & Hibrida)
     if (!db.market || !db.market.prices) {
         db.market = {
             lastUpdate: 0, 
@@ -57,64 +57,61 @@ module.exports = async (command, args, msg, user, db) => {
             currentNews: "Pasar stabil. Menunggu pembukaan sesi.",
             nextNews: "Rumor: Investor institusi mulai mengakumulasi aset.",
             pendingEffect: {},
-            pendingStockMod: {}
+            pendingStockMod: {},
+            lastPriceUpdate: 0, // Timer Harga
+            lastStockUpdate: 0  // Timer Stok
         };
         saveDB(db);
     }
+    
+    // Safety check field timer (untuk user lama)
+    if (typeof db.market.lastPriceUpdate === 'undefined') db.market.lastPriceUpdate = 0;
+    if (typeof db.market.lastStockUpdate === 'undefined') db.market.lastStockUpdate = 0;
 
     const marketData = db.market;
     const now = Date.now();
-    const UPDATE_INTERVAL = 15 * 60 * 1000; 
+    
+    // 🔥 KONFIGURASI WAKTU HIBRIDA
+    const PRICE_INTERVAL = 15 * 60 * 1000; // Harga Update: 15 Menit
+    const STOCK_INTERVAL = 3 * 60 * 1000;  // Stok Update: 3 Menit
+    
     const TAX_SELL = 0.02; 
     const MARGIN_INTEREST = 0.05; 
 
-    // 3. LOGIKA UPDATE HARGA (PERGERAKAN LIAR & BULAT)
-    if (now - marketData.lastUpdate > UPDATE_INTERVAL) {
+    // ==========================================
+    // A. LOGIKA UPDATE HARGA (Setiap 15 Menit)
+    // ==========================================
+    if (now - marketData.lastPriceUpdate > PRICE_INTERVAL) {
         
         for (let k in marketData.prices) {
-            // A. Efek Berita (Multiplier Dasar)
+            // 1. Hitung Volatilitas Normal
             let factor = marketData.pendingEffect.all || marketData.pendingEffect[k] || 1;
-            
-            // B. Tentukan Tingkat Keliaran (Range Persen Integer)
-            let volatilityRange = 20; // Default 20%
-
-            if (k === 'btc' || k === 'eth') volatilityRange = 10; // +/- 10%
-            else if (k === 'sol') volatilityRange = 15;           // +/- 15%
-            else if (k === 'doge' || k === 'pepe') volatilityRange = 30; // +/- 30% (Sangat Liar)
-
-            // C. Hitung Persentase Acak (Bilangan Bulat)
+            let volatilityRange = (k === 'doge' || k === 'pepe') ? 30 : 15;
             let percentChange = Math.floor(Math.random() * (volatilityRange * 2 + 1)) - volatilityRange;
-            
-            // D. Terapkan Harga (KELIPATAN/COMPOUNDING)
             let multiplier = 1 + (percentChange / 100);
+            
             let rawPrice = marketData.prices[k] * factor * multiplier;
-            
-            // PEMBULATAN KE BAWAH (FLOOR)
-            marketData.prices[k] = Math.floor(rawPrice);
-            
-            // CEGAH HARGA 0 (Minimal 1)
-            if (marketData.prices[k] < 1) marketData.prices[k] = 1;
+            let newPrice = Math.max(1, Math.floor(rawPrice));
 
-            // E. Update Stok (Acak Liar -20 s/d +20)
-            let sMod = marketData.pendingStockMod?.all || marketData.pendingStockMod?.[k] || 0;
-            let actualChange = (sMod < 1 && sMod > -1 && sMod !== 0) ? Math.floor(marketData.stocks[k] * sMod) : sMod;
-            actualChange += (Math.floor(Math.random() * 41) - 20);
-            
-            marketData.lastStockChange[k] = actualChange; 
-            marketData.stocks[k] = Math.max(5, marketData.stocks[k] + actualChange);
+            // 🔥 2. FITUR AUTO RECOVERY (ANTI-BANGKRUT)
+            // Jika harga anjlok parah (< 10), Bandar pompa harga naik!
+            if (newPrice < 10) {
+                if (Math.random() < 0.8) { // 80% Peluang
+                    newPrice += Math.floor(Math.random() * 15) + 5; // Naik 5-20 poin
+                }
+            }
+            // Khusus Koin Besar (BTC/ETH/SOL) jangan biarkan di bawah 100
+            else if ((k === 'btc' || k === 'eth' || k === 'sol') && newPrice < 100) {
+                 newPrice += Math.floor(Math.random() * 50) + 20;
+            }
+
+            marketData.prices[k] = newPrice;
         }
 
         // Bunga Hutang
         Object.keys(db.users).forEach(id => {
             let u = db.users[id];
-            if (u.debt > 0) {
-                u.debt = Math.floor(u.debt * (1 + MARGIN_INTEREST));
-                let assetVal = 0;
-                if (u.crypto) for (let [k, v] of Object.entries(u.crypto)) assetVal += v * (marketData.prices[k] || 0);
-                if (u.debt > (assetVal + (u.balance || 0))) {
-                    u.crypto = {}; u.balance = 0; u.debt = 0; 
-                }
-            }
+            if (u.debt > 0) u.debt = Math.floor(u.debt * (1 + MARGIN_INTEREST));
         });
         
         // Ganti Berita
@@ -124,106 +121,110 @@ module.exports = async (command, args, msg, user, db) => {
         marketData.pendingEffect = randomNews.effect;
         marketData.pendingStockMod = randomNews.sMod;
 
-        marketData.lastUpdate = now;
+        marketData.lastPriceUpdate = now;
         saveDB(db);
     }
 
-    // COMMAND !market
+    // ==========================================
+    // B. LOGIKA UPDATE STOK (Setiap 3 Menit)
+    // ==========================================
+    if (now - marketData.lastStockUpdate > STOCK_INTERVAL) {
+        
+        for (let k in marketData.prices) {
+            // Ambil efek stok dari berita aktif
+            let sMod = marketData.pendingStockMod?.all || marketData.pendingStockMod?.[k] || 0;
+            
+            // Perubahan Stok Random
+            let actualChange = (sMod < 1 && sMod > -1 && sMod !== 0) ? Math.floor(marketData.stocks[k] * sMod) : sMod;
+            actualChange += (Math.floor(Math.random() * 41) - 20); 
+
+            // 🔥 3. FITUR BANDAR RESTOCK (ANTI-LANGKA)
+            // Jika stok kritis (< 20), suntik stok baru!
+            if (marketData.stocks[k] < 20) {
+                const suntikan = Math.floor(Math.random() * 50) + 30;
+                actualChange += suntikan;
+            }
+
+            marketData.lastStockChange[k] = actualChange; 
+            marketData.stocks[k] = Math.max(5, marketData.stocks[k] + actualChange);
+        }
+
+        marketData.lastStockUpdate = now;
+        saveDB(db);
+    }
+
+    // COMMAND: MARKET
     if (command === 'market') {
-        let timeLeft = UPDATE_INTERVAL - (now - marketData.lastUpdate);
-        if (timeLeft < 0) timeLeft = 0;
-        let minutesLeft = Math.floor(timeLeft / 60000);
-        let secondsLeft = Math.floor((timeLeft % 60000) / 1000);
+        let priceTime = Math.max(0, PRICE_INTERVAL - (now - marketData.lastPriceUpdate));
+        let pMin = Math.floor(priceTime / 60000);
+        let pSec = Math.floor((priceTime % 60000) / 1000);
+
+        let stockTime = Math.max(0, STOCK_INTERVAL - (now - marketData.lastStockUpdate));
+        let sMin = Math.floor(stockTime / 60000);
 
         let txt = `📊 *BURSA CRYPTO* 🚀\n━━━━━━━━━━━━━━\n`;
         for (let k in marketData.prices) {
             let s = Math.floor(marketData.stocks[k]);
             let chg = marketData.lastStockChange[k];
-            
-            // Format Harga Bulat
-            let priceStr = fmt(marketData.prices[k]);
             let icon = chg >= 0 ? '📈' : '📉'; 
+            // Icon paket jika baru disuntik bandar
+            let suntikIcon = (chg > 25) ? '📦' : ''; 
 
-            txt += `${icon} *${k.toUpperCase()}* : 💰${priceStr}\n`;
-            txt += `   └ Stok: ${fmt(s)} (${chg >= 0 ? '+' : ''}${chg})\n`;
+            txt += `${icon} *${k.toUpperCase()}* : 💰${fmt(marketData.prices[k])}\n`;
+            txt += `   └ Stok: ${fmt(s)} (${chg >= 0 ? '+' : ''}${chg}) ${suntikIcon}\n`;
         }
-        txt += `━━━━━━━━━━━━━━\n📢 BERITA: "${marketData.currentNews}"\n🔮 PREDIKSI: "${marketData.nextNews}"\n\n⏳ Update: *${minutesLeft}m ${secondsLeft}s*\n💰 Saldo: 💰${fmt(user.balance)}`;
+        
+        txt += `━━━━━━━━━━━━━━\n📢 NEWS: "${marketData.currentNews}"\n🔮 NEXT: "${marketData.nextNews}"\n\n`;
+        txt += `⏳ Harga: *${pMin}m ${pSec}s*\n📦 Stok: *${sMin}m*\n💰 Saldo: 💰${fmt(user.balance)}`;
+        
         return msg.reply(txt);
     }
 
-    // 5. COMMAND !BUYCRYPTO (!buycrypto btc 0.5 atau !buycrypto btc all)
+    // COMMAND: BUY
     if (command === 'buycrypto') {
         const koin = args[0]?.toLowerCase();
-        
-        if (!marketData.prices[koin]) return msg.reply("❌ Koin tidak valid. Cek !market");
+        if (!marketData.prices[koin]) return msg.reply("❌ Koin salah.");
 
         let jml = 0;
-        let total = 0;
-
-        // FITUR BELI ALL
         if (args[1]?.toLowerCase() === 'all') {
-            const maxBeli = user.balance / marketData.prices[koin];
-            jml = parseFloat(maxBeli.toFixed(4)); // Max 4 desimal
-            if (jml > marketData.stocks[koin]) jml = marketData.stocks[koin]; // Cek stok
+            if (marketData.prices[koin] <= 0) return msg.reply("❌ Error harga 0.");
+            jml = Math.floor(user.balance / marketData.prices[koin]);
+            if (jml > marketData.stocks[koin]) jml = marketData.stocks[koin];
         } else {
             jml = parseFloat(args[1]?.replace(',', '.')); 
         }
         
-        if (isNaN(jml) || jml <= 0) return msg.reply("❌ Contoh: !buycrypto btc 0.5 atau !buycrypto btc all");
+        if (isNaN(jml) || jml <= 0) return msg.reply("❌ Jumlah salah.");
+        const total = Math.floor(marketData.prices[koin] * jml);
         
-        const pricePerCoin = marketData.prices[koin];
-        total = Math.floor(pricePerCoin * jml); // Total bayar dibulatkan
-        
-        if (user.balance < total) return msg.reply(`❌ Saldo kurang! Butuh: 💰${fmt(total)}`);
-        if (marketData.stocks[koin] < jml) return msg.reply(`❌ Stok pasar habis!`);
+        if (user.balance < total) return msg.reply(`❌ Uang kurang! Butuh: 💰${fmt(total)}`);
+        if (marketData.stocks[koin] < jml) return msg.reply(`❌ Stok kurang! Sisa: ${fmt(marketData.stocks[koin])}`);
 
         user.balance -= total; 
         marketData.stocks[koin] -= jml;
         user.crypto[koin] = (user.crypto[koin] || 0) + jml;
         saveDB(db);
-        return msg.reply(`✅ *BELI SUKSES*\nBeli: ${jml} ${koin.toUpperCase()}\nTotal: 💰${fmt(total)}`);
+        return msg.reply(`✅ Beli ${jml} ${koin.toUpperCase()} seharga 💰${fmt(total)}`);
     }
 
-    // 6. COMMAND !SELLCRYPTO (!sellcrypto btc 0.5 atau !sellcrypto btc all)
+    // COMMAND: SELL
     if (command === 'sellcrypto') {
         const koin = args[0]?.toLowerCase();
-        
-        if (!user.crypto?.[koin]) return msg.reply(`❌ Kamu tidak punya aset ${koin?.toUpperCase()}!`);
-
-        let jml = 0;
-
-        // FITUR JUAL ALL
-        if (args[1]?.toLowerCase() === 'all') {
-            jml = user.crypto[koin];
-        } else {
-            jml = parseFloat(args[1]?.replace(',', '.'));
-        }
-
-        if (isNaN(jml) || jml <= 0) return msg.reply("❌ Contoh: !sellcrypto btc 0.5 atau !sellcrypto btc all");
-        if (user.crypto[koin] < jml) return msg.reply(`❌ Aset tidak cukup! Punya: ${user.crypto[koin]}`);
-
-        const bruto = marketData.prices[koin] * jml;
-        const pajak = bruto * TAX_SELL;
-        const neto = Math.floor(bruto - pajak); // Hasil jual dibulatkan
-
+        if (!user.crypto?.[koin]) return msg.reply("❌ Gak punya aset ini.");
+        let jml = (args[1]?.toLowerCase() === 'all') ? user.crypto[koin] : parseFloat(args[1]?.replace(',', '.'));
+        if (isNaN(jml) || jml <= 0 || user.crypto[koin] < jml) return msg.reply("❌ Aset tidak cukup.");
+        const neto = Math.floor((marketData.prices[koin] * jml) * (1 - TAX_SELL));
         user.crypto[koin] -= jml;
-        
-        // Hapus key jika aset 0 biar rapi
         if (user.crypto[koin] <= 0.000001) delete user.crypto[koin];
-
-        user.balance += neto; 
-        marketData.stocks[koin] += jml;
-        saveDB(db);
-        return msg.reply(`✅ *JUAL SUKSES*\nTerima: 💰${fmt(neto)} (Pajak 2%)`);
+        user.balance += neto; marketData.stocks[koin] += jml; saveDB(db);
+        return msg.reply(`✅ Jual ${jml} ${koin.toUpperCase()} dapat 💰${fmt(neto)}`);
     }
 
-    // 7. COMMAND !MINING
+    // MINING
     if (command === 'mining' || command === 'mine') {
-        const COOLDOWN = 450000; 
-        if (now - (user.lastMining || 0) < COOLDOWN) {
-            return msg.reply(`⏳ Mesin panas! Tunggu ${Math.floor((COOLDOWN - (now - user.lastMining)) / 60000)} menit lagi.`);
-        }
-
+        const COOLDOWN = 5 * 60 * 1000; 
+        if (now - (user.lastMining || 0) < COOLDOWN) return msg.reply(`⏳ Tunggu ${Math.ceil((COOLDOWN - (now - user.lastMining))/60000)} menit lagi.`);
+        
         const rand = Math.random() * 100;
         let coin = 'pepe', rarity = 'Common';
         if (rand < 2) { coin = 'btc'; rarity = '🔥 LEGENDARY'; }
@@ -232,108 +233,102 @@ module.exports = async (command, args, msg, user, db) => {
         else if (rand < 60) { coin = 'doge'; rarity = '🟢 UNCOMMON'; }
         
         const goldVal = Math.floor(Math.random() * 1850) + 150; 
-        const qty = goldVal / marketData.prices[coin]; // Qty tetap desimal agar adil
+        const qty = goldVal / Math.max(1, marketData.prices[coin]); 
 
         user.crypto[coin] = (user.crypto[coin] || 0) + qty;
-        user.lastMining = now;
-        saveDB(db);
-
-        // Tampilkan 4 desimal untuk qty koin
-        let qDisplay = qty.toLocaleString('id-ID', { maximumFractionDigits: 6 });
-        return msg.reply(`⛏️ *MINING BERHASIL!* (${rarity})\n💎 Dapat: ${qDisplay} ${coin.toUpperCase()}\n💰 Nilai Setara: 💰${fmt(goldVal)}`);
+        user.lastMining = now; saveDB(db);
+        return msg.reply(`⛏️ *DAPAT:* ${qty.toLocaleString('id-ID', {maxFractionDigits:4})} ${coin.toUpperCase()} (Setara 💰${fmt(goldVal)})`);
     }
 
-    // 8. COMMAND PORTOFOLIO
+    // COMMAND LAIN (PF, TOP, MIGRASI)
     if (command === 'pf' || command === 'portofolio') {
-        let txt = `💰 *PORTOFOLIO ASET*\n\n`;
-        let assetTotal = 0;
+        let txt = `💰 *PORTOFOLIO*\n`; let total = 0;
         for (let [k, v] of Object.entries(user.crypto)) {
             if (v > 0.0001) {
-                let val = Math.floor(v * marketData.prices[k]); // Nilai aset dibulatkan
-                assetTotal += val;
-                
-                // Format jumlah koin dengan koma (ID) tapi maksimal 4 desimal
-                let qtyDisplay = v.toLocaleString('id-ID', { maximumFractionDigits: 4 });
-                
-                txt += `🔸 *${k.toUpperCase()}*: ${qtyDisplay} (≈💰${fmt(val)})\n`;
+                let val = Math.floor(v * marketData.prices[k]); total += val;
+                txt += `🔸 ${k.toUpperCase()}: ${v.toLocaleString('id-ID', {maxFractionDigits:4})} (≈💰${fmt(val)})\n`;
             }
         }
-        txt += `\n💵 Tunai: 💰${fmt(user.balance)}\n📊 Total Kekayaan: 💰${fmt(assetTotal + user.balance - user.debt)}`;
+        txt += `\n💵 Tunai: 💰${fmt(user.balance)}\n💸 Hutang: 💰${fmt(user.debt)}\n📊 Bersih: 💰${fmt(total + user.balance - user.debt)}`;
         return msg.reply(txt);
     }
-    
-    // 9. COMMAND TOP ranking crypto
+
     if (command === 'topcrypto' || command === 'top') {
-        let consolidated = {};
-        Object.keys(db.users).forEach(id => {
-            let u = db.users[id];
-            let cleanId = id.replace(/:[0-9]+/, ''); 
-            let assets = 0;
-            if (u.crypto) for (let [k, v] of Object.entries(u.crypto)) assets += v * (marketData.prices[k] || 0);
-            let totalWealth = (u.balance || 0) + assets - (u.debt || 0);
-
-            if (!consolidated[cleanId]) consolidated[cleanId] = { id: cleanId, originalId: id, total: 0 };
-            consolidated[cleanId].total += totalWealth;
-        });
-
-        const top = Object.values(consolidated).sort((a, b) => b.total - a.total).slice(0, 5);
-        let res = `🏆 *TOP 5 SULTAN* 🏆\n\n` + top.map((u, i) => `${i+1}. @${u.id.split('@')[0]} - 💰${fmt(u.total)}`).join('\n');
-        
-        // Mention di Baileys
-        const chat = await msg.getChat();
-        await chat.sendMessage(res, { mentions: top.map(u => u.originalId) });
+        let list = Object.entries(db.users).map(([id, u]) => {
+            let ast = 0; if (u.crypto) for (let [k,v] of Object.entries(u.crypto)) ast += v * (marketData.prices[k]||0);
+            return { id, total: (u.balance||0) + ast - (u.debt||0) };
+        }).sort((a,b) => b.total - a.total).slice(0, 5);
+        let txt = `🏆 *TOP SULTAN*\n` + list.map((x, i) => `${i+1}. @${x.id.split('@')[0]} - 💰${fmt(x.total)}`).join('\n');
+        const chat = await msg.getChat(); await chat.sendMessage(txt, { mentions: list.map(x => x.id) });
     }
 
-    // 10. COMMAND MARGIN
-    if (command === 'margin') {
+    // --- FITUR MARGIN (DIPERBAIKI) ---
+    if (command === 'margin' || command === 'ngutang') {
         const koin = args[0]?.toLowerCase();
-        const jml = parseFloat(args[1]?.replace(',', '.'));
-        if (!marketData.prices[koin] || isNaN(jml) || jml <= 0) return msg.reply("❌ Format: !margin btc 0.1");
+        if (!marketData.prices[koin]) return msg.reply("❌ Koin salah. Contoh: !margin btc 0.1");
+
+        // 1. Hitung Limit (5x Saldo + 5000)
+        const limitHutang = (user.balance * 5) + 5000;
+        const sisaLimit = limitHutang - user.debt;
         
-        const biaya = Math.floor(marketData.prices[koin] * jml);
-        if ((user.debt + biaya) > (user.balance * 2 + 1000)) return msg.reply("❌ Limit hutang habis.");
+        if (sisaLimit <= 0) return msg.reply(`❌ Limit hutang habis! (Max: 💰${fmt(limitHutang)})`);
 
-        user.debt = (user.debt || 0) + biaya;
-        user.crypto[koin] = (user.crypto[koin] || 0) + jml;
-        saveDB(db);
-        return msg.reply(`⚠️ Hutang 💰${fmt(biaya)} untuk beli aset.`);
-    }
-
-    if (command === 'paydebt') {
-        const bayar = parseInt(args[0]);
-        const nominal = Math.min(isNaN(bayar) ? 0 : bayar, user.debt || 0);
-        if (nominal <= 0) return msg.reply("❌ Masukkan nominal valid.");
-        if (user.balance < nominal) return msg.reply("❌ Saldo kurang.");
-        
-        user.balance -= nominal;
-        user.debt -= nominal;
-        saveDB(db);
-        return msg.reply(`✅ Hutang lunas 💰${fmt(nominal)}. Sisa: 💰${fmt(user.debt)}`);
-    }
-
-    // 11. COMMAND MIGRASI
-    if (command === 'migrasi' || command === 'gabungakun') {
-        const targetJid = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
-        const senderId = msg.key.remoteJid || msg.author; 
-
-        if (!targetJid || targetJid === senderId) return msg.reply("❌ Tag akun utama! Contoh: `!migrasi @628xxx`");
-
-        if (!db.users[targetJid]) db.users[targetJid] = { balance: 0, debt: 0, xp: 0, level: 1, crypto: {} };
-        const targetUser = db.users[targetJid];
-
-        targetUser.balance = (targetUser.balance || 0) + (user.balance || 0);
-        targetUser.debt = (targetUser.debt || 0) + (user.debt || 0);
-        targetUser.xp = (targetUser.xp || 0) + (user.xp || 0);
-        targetUser.level = Math.max(targetUser.level, user.level);
-        
-        for (let [k, v] of Object.entries(user.crypto || {})) {
-            targetUser.crypto[k] = (targetUser.crypto[k] || 0) + v;
+        let jml = 0;
+        // 2. Logic "ALL" untuk Margin
+        if (args[1]?.toLowerCase() === 'all') {
+            // Margin All: Beli sebanyak sisa limit
+            jml = sisaLimit / marketData.prices[koin];
+            jml = Math.floor(jml * 10000) / 10000; // 4 desimal
+        } else {
+            jml = parseFloat(args[1]?.replace(',', '.'));
         }
 
-        delete db.users[senderId];
-        saveDB(db);
+        if (isNaN(jml) || jml <= 0) return msg.reply("❌ Jumlah salah.");
 
-        const chat = await msg.getChat();
-        await chat.sendMessage(`✅ Migrasi ke @${targetJid.split('@')[0]} berhasil.`, { mentions: [targetJid] });
+        const biaya = Math.floor(marketData.prices[koin] * jml);
+        
+        if (biaya > sisaLimit) return msg.reply(`❌ Melebihi limit! Kamu cuma bisa ngutang 💰${fmt(sisaLimit)} lagi.`);
+
+        user.debt += biaya;
+        user.crypto[koin] = (user.crypto[koin] || 0) + jml;
+        saveDB(db);
+        return msg.reply(`⚠️ *NGUTANG SUKSES*\nBeli: ${jml} ${koin.toUpperCase()}\nHutang Baru: 💰${fmt(biaya)}\nTotal Hutang: 💰${fmt(user.debt)}`);
+    }
+
+    // --- FITUR PAYDEBT (DIPERBAIKI) ---
+    if (command === 'paydebt' || command === 'bayar') {
+        const totalHutang = user.debt || 0;
+        if (totalHutang <= 0) return msg.reply("✅ Kamu bebas hutang! Aman.");
+
+        let bayar = 0;
+        if (args[0]?.toLowerCase() === 'all') {
+            bayar = totalHutang;
+        } else {
+            // Hapus titik agar parsing angka benar (misal 10.000 jadi 10000)
+            bayar = parseInt(args[0]?.replace(/[.,]/g, '') || '0');
+        }
+
+        if (isNaN(bayar) || bayar <= 0) return msg.reply("❌ Nominal salah. Contoh: !bayar 1000 atau !bayar all");
+        
+        // Cek Saldo
+        if (user.balance < bayar) return msg.reply(`❌ Saldo kurang! Butuh 💰${fmt(bayar)}`);
+
+        // Jika bayar lebih dari hutang, bayar pas hutangnya saja
+        if (bayar > totalHutang) bayar = totalHutang;
+
+        user.balance -= bayar;
+        user.debt -= bayar;
+        saveDB(db);
+        return msg.reply(`✅ Lunasin hutang 💰${fmt(bayar)}. Sisa Hutang: 💰${fmt(user.debt)}`);
+    }
+
+    if (command === 'migrasi') {
+        const trg = msg.message.extendedTextMessage?.contextInfo?.mentionedJid?.[0];
+        if (!trg) return msg.reply("❌ Tag tujuan.");
+        if (!db.users[trg]) db.users[trg] = { balance:0, debt:0, xp:0, level:1, crypto:{} };
+        db.users[trg].balance += user.balance; db.users[trg].debt += user.debt;
+        for (let [k,v] of Object.entries(user.crypto)) db.users[trg].crypto[k] = (db.users[trg].crypto[k]||0)+v;
+        delete db.users[msg.key.remoteJid]; saveDB(db);
+        const chat = await msg.getChat(); await chat.sendMessage("✅ Migrasi sukses.", {mentions:[trg]});
     }
 };
