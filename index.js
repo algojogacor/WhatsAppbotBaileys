@@ -28,9 +28,10 @@ const ALLOWED_GROUPS = [
     "6282140693010-1590052322@g.us", // Grup Keluarga Wonoboyo
     "120363253471284606@g.us",       // Grup Ambarya
     "120363328759898377@g.us"        // Grup Testingbot
+    "120363422854499629@g.us"        // Grup English Area
 ];
 
-// --- TAMBAHAN UNTUK KOYEB/PANEL (Supaya bot tidak mati) ---
+// --- TAMBAHAN UNTUK KOYEB/PANEL
 const express = require('express');
 const app = express();
 const port = process.env.PORT || 8080;
@@ -99,8 +100,6 @@ async function startBot() {
         const m = messages[0];
         if (!m.message) return;
         
-        // ⛔ PENGAMAN 1: Abaikan pesan dari Bot sendiri
-        // if (m.key.fromMe) return; 
 
         try {
             // ==========================================================
@@ -381,3 +380,4 @@ async function startBot() {
 
 // Jalankan Bot
 startBot();
+
