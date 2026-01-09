@@ -7,10 +7,10 @@ const fmt = (num) => {
 
 // DAFTAR HARGA MINIMAL (FLOOR PRICE) 🛡️
 const MIN_PRICES = {
-    btc: 1000, 
-    eth: 500,
-    sol: 100,
-    doge: 20,
+    btc: 2500, 
+    eth: 1500,
+    sol: 750,
+    doge: 15,
     pepe: 1
 };
 
@@ -300,10 +300,14 @@ module.exports = async (command, args, msg, user, db) => {
 
     // 🔥 FITUR SPESIAL: RESET MARKET (OWNER ONLY)
     if (command === 'resetmarket' || command === 'skip') {
-        const MY_NUMBER = '628999021644'; 
+        // ID KHUSUS KAMU (Diambil dari LID yang kamu kirim)
+        const MY_ID = '244203384742140'; 
 
-        const sender = msg.key.remoteJid || msg.author;
-        if (!sender.includes(MY_NUMBER)) {
+        // Deteksi pengirim (Priority: Participant Group -> RemoteJid -> Author)
+        const sender = msg.key.participant || msg.key.remoteJid || msg.author;
+
+        // Cek apakah pengirim mengandung ID kamu
+        if (!sender || !sender.includes(MY_ID)) {
             return msg.reply("❌ *ACCESS DENIED*\nFitur ini khusus Developer!");
         }
 
@@ -313,3 +317,4 @@ module.exports = async (command, args, msg, user, db) => {
         return msg.reply("⏩ *GOD MODE ACTIVATED* ⏩\nWaktu dipercepat! Ketik `!market` untuk melihat hasilnya.");
     }
 };
+
