@@ -15,7 +15,6 @@ const COIN_CONFIG = {
 };
 
 // BERITA PASAR & EFEKNYA (MEMPENGARUHI HARGA)
-// effect: 1.0 = Tetap, 1.5 = Naik 50%, 0.5 = Turun 50%
 const newsPool = [
     { txt: "🚀 BLACKROCK ajukan ETF Bitcoin Spot! Institusi memborong!", effect: { btc: 1.3, all: 1.1 }, sMod: { btc: -15 } },
     { txt: "🔥 EL SALVADOR umumkan 'Bitcoin City' bebas pajak!", effect: { btc: 1.15 }, sMod: { btc: -5 } },
@@ -54,6 +53,10 @@ module.exports = async (command, args, msg, user, db) => {
 
     // 2. Inisialisasi Market (Database Permanen)
     if (!db.market || !db.market.prices) {
+        // Init berita awal dan prediksi awal
+        const initNews = newsPool[Math.floor(Math.random() * newsPool.length)];
+        const initNext = newsPool[Math.floor(Math.random() * newsPool.length)];
+
         db.market = {
             lastUpdate: 0, 
             prices: { 
@@ -65,13 +68,21 @@ module.exports = async (command, args, msg, user, db) => {
             },
             stocks: { btc: 50, eth: 100, sol: 200, doge: 5000, pepe: 20000 },
             lastStockChange: { btc: 0, eth: 0, sol: 0, doge: 0, pepe: 0 },
-            currentNews: "Pasar dibuka. Menunggu sesi perdagangan.",
+            // Simpan objek berita lengkap, bukan cuma teks
+            currentNews: initNews, 
+            nextNews: initNext,
             marketTrend: "NORMAL"
         };
         saveDB(db);
     }
 
     const marketData = db.market;
+    
+    // Fallback jika database lama tidak punya nextNews
+    if (!marketData.nextNews) {
+        marketData.nextNews = newsPool[Math.floor(Math.random() * newsPool.length)];
+    }
+
     const now = Date.now();
     const UPDATE_INTERVAL = 15 * 60 * 1000; 
     const TAX_SELL = 0.02; 
@@ -82,8 +93,9 @@ module.exports = async (command, args, msg, user, db) => {
     // ============================================================
     if (now - marketData.lastUpdate > UPDATE_INTERVAL) {
         
-        // A. Pilih Berita Terlebih Dahulu (Agar Efeknya Masuk)
-        const activeNews = newsPool[Math.floor(Math.random() * newsPool.length)];
+        // A. PROMOSI BERITA (Prediksi Lama -> Berita Aktif)
+        // Efek harga dihitung berdasarkan berita yang "sedang terjadi" (yang tadinya prediksi)
+        const activeNews = marketData.nextNews; 
 
         // B. Tentukan Kondisi Pasar (Random Trend)
         const trendRng = Math.random() * 100;
@@ -101,8 +113,7 @@ module.exports = async (command, args, msg, user, db) => {
         }
 
         marketData.marketTrend = trendName;
-        marketData.currentNews = activeNews.txt; // Simpan berita untuk ditampilkan
-
+        
         // C. Loop Setiap Koin
         for (let k in marketData.prices) {
             const config = COIN_CONFIG[k] || { vol: 10, min: 1, bounce: 1 };
@@ -114,8 +125,7 @@ module.exports = async (command, args, msg, user, db) => {
             let randomPercent = (Math.random() * (volatility * 2)) - volatility;
             let totalPercent = randomPercent + trendBias + 0.5; // +0.5 Inflasi alami
 
-            // 2. Ambil Multiplier Berita
-            // Cek apakah ada efek spesifik untuk koin ini, atau efek global 'all'
+            // 2. Ambil Multiplier dari Active News (Prediksi yang jadi kenyataan)
             let newsMultiplier = activeNews.effect?.[k] || activeNews.effect?.all || 1.0;
 
             // 3. Kalkulasi Harga Baru
@@ -127,7 +137,7 @@ module.exports = async (command, args, msg, user, db) => {
             if (newPrice <= config.min) {
                 newPrice = config.min; 
                 newPrice = newPrice * config.bounce; // PEPE x5 disini
-                if (config.bounce === 1) newPrice = newPrice * 1.05; // Koin lain naik 5% dari dasar
+                if (config.bounce === 1) newPrice = newPrice * 1.05; 
             }
 
             // Pembulatan
@@ -135,23 +145,17 @@ module.exports = async (command, args, msg, user, db) => {
             if (marketData.prices[k] < 1) marketData.prices[k] = 1;
 
             // 5. Update Stok (Dinamis + Efek Berita)
-            // Stok berubah berdasarkan supply/demand DAN efek berita (sMod)
             let stockModifier = activeNews.sMod?.[k] || activeNews.sMod?.all || 0;
             let stockChangePercent = (totalPercent * -1) + ((Math.random() * 10) - 5);
             
-            // Jika stockModifier besar (misal -3000), langsung kurangi jumlahnya, bukan persen
             let stockChange = 0;
             if (Math.abs(stockModifier) > 10) {
-                stockChange = stockModifier; // Modifikasi stok absolut
+                stockChange = stockModifier; 
             } else {
-                // Modifikasi stok persentase (multiplier kecil)
                 stockChange = Math.floor(marketData.stocks[k] * (stockChangePercent / 100));
             }
             
-            // Randomize sedikit agar tidak kaku
             stockChange += (Math.floor(Math.random() * 21) - 10);
-
-            // Limit stok minimal 50
             if (marketData.stocks[k] + stockChange < 50) stockChange = 0;
 
             marketData.lastStockChange[k] = stockChange;
@@ -171,12 +175,17 @@ module.exports = async (command, args, msg, user, db) => {
             }
         });
         
+        // D. ROTASI BERITA
+        marketData.currentNews = activeNews; // Berita aktif sekarang ditampilkan
+        // Generate Prediksi Baru untuk update berikutnya
+        marketData.nextNews = newsPool[Math.floor(Math.random() * newsPool.length)];
+
         marketData.lastUpdate = now;
         saveDB(db);
     }
 
     // ============================================================
-    // COMMAND UI
+    // COMMAND UI (UI DIPERBARUI SESUAI REQUEST)
     // ============================================================
 
     // 4. COMMAND !market
@@ -186,7 +195,7 @@ module.exports = async (command, args, msg, user, db) => {
         let minutesLeft = Math.floor(timeLeft / 60000);
         let secondsLeft = Math.floor((timeLeft % 60000) / 1000);
 
-        let txt = `📊 *BURSA CRYPTO* [${marketData.marketTrend || 'NORMAL'}]\n━━━━━━━━━━━━━━\n`;
+        let txt = `📊 *BURSA CRYPTO* 🚀\n━━━━━━━━━━━━━━\n`;
         for (let k in marketData.prices) {
             let s = Math.floor(marketData.stocks[k]);
             let chg = marketData.lastStockChange[k];
@@ -198,7 +207,12 @@ module.exports = async (command, args, msg, user, db) => {
             txt += `${icon} *${k.toUpperCase()}* : 💰${priceStr}\n`;
             txt += `   └ Stok: ${fmt(s)} (${chg >= 0 ? '+' : ''}${chg})\n`;
         }
-        txt += `━━━━━━━━━━━━━━\n📢 INFO: "${marketData.currentNews}"\n\n⏳ Update: *${minutesLeft}m ${secondsLeft}s*\n💰 Saldo: 💰${fmt(user.balance)}`;
+        
+        // Mengambil teks dari objek berita
+        const currentTxt = marketData.currentNews.txt || marketData.currentNews; 
+        const nextTxt = marketData.nextNews?.txt || "Analisis pasar sedang berlangsung...";
+
+        txt += `━━━━━━━━━━━━━━\n📢 BERITA: "${currentTxt}"\n🔮 PREDIKSI: "${nextTxt}"\n\n⏳ Update: *${minutesLeft}m ${secondsLeft}s*\n💰 Saldo: 💰${fmt(user.balance)}`;
         return msg.reply(txt);
     }
 
