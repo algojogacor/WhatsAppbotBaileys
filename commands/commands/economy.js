@@ -190,20 +190,51 @@ module.exports = async (command, args, msg, user, db) => {
 
     // 6. TRANSFER (GIVE)
     if (command === "give" || command === "transfer" || command === "tf") {
-        const targetId = msg.mentionedIds?.[0] || args[0]?.replace('@', '') + '@s.whatsapp.net';
-        const amount = parseInt(args[1]);
+        // Ambil target dari Mention (Baileys Style)
+        const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
+        let targetId = mentions[0];
 
-        if (!targetId || isNaN(amount) || amount <= 0) return msg.reply("❌ Format: `!tf @user 1000`");
-        if (!db.users[targetId]) return msg.reply("❌ User tujuan belum pernah chat bot.");
-        if (targetId === (msg.author || msg.from)) return msg.reply("❌ Gak bisa transfer ke diri sendiri.");
+        // Fallback: Kalau user ngetik manual (misal !tf 62812345 100)
+        if (!targetId && args[0]) {
+            targetId = args[0].replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+        }
+
+        // Ambil nominal (bisa di args[0] atau args[1] tergantung format)
+        // Format 1: !tf @tag 1000  -> nominal di args[1]
+        // Format 2: !tf 628xxx 1000 -> nominal di args[1]
+        let amount = parseInt(args[1]);
+
+        // Kalau user nulis !tf 1000 @tag (Nominal duluan)
+        if (isNaN(amount)) {
+            amount = parseInt(args[0]);
+        }
+
+        if (!targetId || isNaN(amount) || amount <= 0) {
+            return msg.reply("❌ Format Salah!\nContoh: `!tf @user 1000`");
+        }
+
+        // Cek database user tujuan
+        if (!db.users[targetId]) {
+            // Auto Register Target kalau belum ada
+            db.users[targetId] = { 
+                balance: 0, xp: 0, level: 1, crypto: {}, debt: 0, inv: [], buffs: {} 
+            };
+        }
+
+        const senderId = msg.key.remoteJid || msg.author;
+        if (targetId === senderId) return msg.reply("❌ Gak bisa transfer ke diri sendiri.");
         if (user.balance < amount) return msg.reply("❌ Uang gak cukup.");
 
+        // Eksekusi Transfer
         user.balance -= amount;
-        if (typeof db.users[targetId].balance === 'undefined') db.users[targetId].balance = 0;
-        db.users[targetId].balance += amount;
+        db.users[targetId].balance = (db.users[targetId].balance || 0) + amount;
 
         saveDB(db);
-        return msg.reply(`✅ *TRANSFER SUKSES*\nDikirim: 💰${amount.toLocaleString('id-ID')}\nKe: @${targetId.split('@')[0]}`, null, { mentions: [targetId] });
+
+        const { getChat } = msg; 
+        // Kirim konfirmasi dengan mention
+        const chat = await msg.getChat();
+        await chat.sendMessage(`✅ *TRANSFER SUKSES*\nDikirim: 💰${amount.toLocaleString('id-ID')}\nKe: @${targetId.split('@')[0]}`, { mentions: [targetId] });
     }
 
     // 7. SHOP & INVENTORY
