@@ -331,4 +331,20 @@ module.exports = async (command, args, msg, user, db) => {
         delete db.users[msg.key.remoteJid]; saveDB(db);
         const chat = await msg.getChat(); await chat.sendMessage("✅ Migrasi sukses.", {mentions:[trg]});
     }
+
+    // 🔥 FITUR SPESIAL: RESET MARKET (OWNER ONLY)
+    if (command === 'resetmarket' || command === 'skip') {
+        const MY_NUMBER = '628999021644'; 
+
+        const sender = msg.key.remoteJid || msg.author;
+        if (!sender.includes(MY_NUMBER)) {
+            return msg.reply("❌ *ACCESS DENIED*\nFitur ini khusus Developer!");
+        }
+
+        db.market.lastPriceUpdate = 0; // Reset Timer Harga
+        db.market.lastStockUpdate = 0; // Reset Timer Stok
+        saveDB(db);
+        return msg.reply("⏩ *GOD MODE ACTIVATED* ⏩\nWaktu dipercepat! Ketik `!market` untuk melihat hasilnya.");
+    }
 };
+
