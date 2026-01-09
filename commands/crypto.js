@@ -179,26 +179,56 @@ module.exports = async (command, args, msg, user, db) => {
     // COMMAND UI
     // ============================================================
 
-    // 4. COMMAND !market
+    // 4. COMMAND !MARKET 
     if (command === 'market') {
+        // Helper: Ambil text jika itu object, atau ambil string langsung
+        const getTxt = (n) => (n && typeof n === 'object' && n.txt) ? n.txt : n;
+
+        // Pastikan data tidak kosong
+        if (!marketData.currentNews) marketData.currentNews = newsPool[Math.floor(Math.random() * newsPool.length)];
+        if (!marketData.nextNews) {
+            marketData.nextNews = newsPool[Math.floor(Math.random() * newsPool.length)];
+            saveDB(db); // Simpan agar prediksi muncul permanen
+        }
+
+        // Hitung Waktu Mundur
         let timeLeft = UPDATE_INTERVAL - (now - marketData.lastUpdate);
         if (timeLeft < 0) timeLeft = 0;
         let minutesLeft = Math.floor(timeLeft / 60000);
         let secondsLeft = Math.floor((timeLeft % 60000) / 1000);
 
+        // --- BAGIAN TAMPILAN (UI) ---
+        
+        // 1. Header
         let txt = `📊 *BURSA CRYPTO* [${marketData.marketTrend || 'NORMAL'}]\n━━━━━━━━━━━━━━\n`;
+        
+        // 2. Loop Daftar Koin
         for (let k in marketData.prices) {
             let s = Math.floor(marketData.stocks[k]);
             let chg = marketData.lastStockChange[k];
+            
+            // Format Harga
             let priceStr = fmt(marketData.prices[k]);
             
+            // Tentukan Icon (Warning jika harga dekat floor, Naik/Turun stok)
             let isLow = marketData.prices[k] <= (COIN_CONFIG[k]?.min * 1.5);
-            let icon = isLow ? '⚠️' : (chg <= 0 ? '📈' : '📉'); 
+            let icon = isLow ? '⚠️' : (chg >= 0 ? '📈' : '📉'); 
 
             txt += `${icon} *${k.toUpperCase()}* : 💰${priceStr}\n`;
             txt += `   └ Stok: ${fmt(s)} (${chg >= 0 ? '+' : ''}${chg})\n`;
         }
-        txt += `━━━━━━━━━━━━━━\n📢 INFO: "${marketData.currentNews}"\n\n⏳ Update: *${minutesLeft}m ${secondsLeft}s*\n💰 Saldo: 💰${fmt(user.balance)}`;
+
+        // 3. Ambil Teks Berita & Prediksi
+        const beritanya = getTxt(marketData.currentNews) || "Sedang memuat data...";
+        const prediksinya = getTxt(marketData.nextNews) || "Sedang menganalisis pasar...";
+
+        // 4. Footer (Berita, Prediksi, Waktu, Saldo)
+        txt += `━━━━━━━━━━━━━━\n`;
+        txt += `📢 BERITA: "${beritanya}"\n`;
+        txt += `🔮 PREDIKSI: "${prediksinya}"\n\n`;
+        txt += `⏳ Update: *${minutesLeft}m ${secondsLeft}s*\n`;
+        txt += `💰 Saldo: 💰${fmt(user.balance)}`;
+        
         return msg.reply(txt);
     }
 
@@ -356,3 +386,4 @@ module.exports = async (command, args, msg, user, db) => {
         await chat.sendMessage(`✅ Migrasi ke @${targetJid.split('@')[0]} berhasil.`, { mentions: [targetJid] });
     }
 };
+
