@@ -1,13 +1,5 @@
 const { saveDB } = require('../helpers/database');
 
-// Simulasi harga crypto untuk estimasi kekayaan
-const cryptoPrices = {
-    btc: 950000000,
-    eth: 45000000,
-    sol: 2300000,
-    doge: 2500
-};
-
 module.exports = async (command, args, msg, user, db, chat, sock) => {
     const today = new Date().toISOString().split("T")[0];
 
@@ -22,6 +14,22 @@ module.exports = async (command, args, msg, user, db, chat, sock) => {
         return "🥚 Newbie";
     };
 
+    // Ambil Harga Pasar Asli (Real-time)
+    const marketPrices = db.market?.prices || { btc: 0, eth: 0, sol: 0, doge: 0, pepe: 0 };
+
+    // Helper Hitung Kekayaan Crypto
+    const calculateCryptoWealth = (cryptoData) => {
+        let total = 0;
+        if (cryptoData) {
+            for (let [coin, amount] of Object.entries(cryptoData)) {
+                // Gunakan harga dari database market
+                const price = marketPrices[coin] || 0; 
+                total += Math.floor(amount * price);
+            }
+        }
+        return total;
+    };
+
     // 1. PROFILE USER (!me, !profile)
     if (command === "me" || command === "profile" || command === "level" || command === "status") {
         
@@ -32,21 +40,15 @@ module.exports = async (command, args, msg, user, db, chat, sock) => {
             if (user.buffs.gacha?.active) buffList.push("🍀 Luck Charm");
         }
 
-        // 2. Hitung Total Aset (Uang + Bank + Crypto)
-        let cryptoValue = 0;
-        if (user.crypto) {
-            for (let [coin, amount] of Object.entries(user.crypto)) {
-                if (cryptoPrices[coin]) {
-                    cryptoValue += amount * cryptoPrices[coin];
-                }
-            }
-        }
-        const totalNetWorth = user.balance + (user.bank || 0) + cryptoValue;
+        // 2. Hitung Aset
+        const cryptoValue = calculateCryptoWealth(user.crypto);
+        // Rumus: Uang Tunai + Bank + Aset Crypto - Hutang
+        const totalNetWorth = user.balance + (user.bank || 0) + cryptoValue - (user.debt || 0);
 
         // 3. Info Level
         const xpToNextLevel = user.level * 100;
         
-        // 4. Nama (Ambil dari PushName Baileys)
+        // 4. Nama
         const name = msg.pushName || "Warga Sipil";
 
         return msg.reply(
@@ -59,8 +61,9 @@ module.exports = async (command, args, msg, user, db, chat, sock) => {
 ━━━━━━━━━━━━━━━━━
 💵 Dompet: Rp ${Math.floor(user.balance).toLocaleString('id-ID')}
 🏦 Bank: Rp ${(user.bank || 0).toLocaleString('id-ID')}
-📈 Aset Crypto: Rp ${Math.floor(cryptoValue).toLocaleString('id-ID')}
-💰 *Total Kekayaan: Rp ${Math.floor(totalNetWorth).toLocaleString('id-ID')}*
+📈 Aset Crypto: Rp ${cryptoValue.toLocaleString('id-ID')}
+💸 Hutang: Rp ${(user.debt || 0).toLocaleString('id-ID')}
+💰 *Total Kekayaan: Rp ${totalNetWorth.toLocaleString('id-ID')}*
 ━━━━━━━━━━━━━━━━━
 🎒 Isi Tas: *${user.inv ? user.inv.length : 0}* Item
 💊 Buff: ${buffList.length > 0 ? buffList.join(", ") : "_Tidak ada_"}
@@ -93,16 +96,16 @@ _Ketik !quest untuk melihat misi harian!_`
                 .filter(id => db.users[id]) // Hanya ambil yg ada di DB bot
                 .map(id => {
                     const data = db.users[id];
-                    let cVal = 0;
-                    if (data.crypto) {
-                        for (let [c, amt] of Object.entries(data.crypto)) {
-                            if (cryptoPrices[c]) cVal += amt * cryptoPrices[c];
-                        }
-                    }
+                    // Hitung Crypto pakai harga REAL-TIME dari database
+                    const cVal = calculateCryptoWealth(data.crypto);
+                    
+                    // Rumus Net Worth Konsisten
+                    const netWorth = (data.balance || 0) + (data.bank || 0) + cVal - (data.debt || 0);
+
                     return {
                         id: id,
                         level: data.level || 1,
-                        netWorth: (data.balance || 0) + (data.bank || 0) + cVal
+                        netWorth: netWorth
                     };
                 });
 
@@ -131,10 +134,7 @@ _Ketik !quest untuk melihat misi harian!_`
             }
 
             // Kirim dengan Mentions (Agar nama @user jadi biru)
-            await chat.sendMessage({
-                text: text,
-                mentions: top5.map(u => u.id)
-            });
+            await chat.sendMessage(text, { mentions: top5.map(u => u.id) });
 
         } catch (err) {
             console.error("Error Rank:", err);
@@ -228,7 +228,6 @@ _Ketik !quest untuk melihat misi harian!_`
         let list = `🎒 *ISI TAS PETUALANG*\n━━━━━━━━━━━━━━━━━\n`;
         Object.keys(counts).forEach((item, i) => {
             list += `${i + 1}. *${item.toUpperCase()}* (x${counts[item]})\n`;
-            // list += `   👉 Pakai: !use ${item}\n`;
         });
 
         return msg.reply(list);
